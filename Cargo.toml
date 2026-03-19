@@ -1,0 +1,23 @@
+[package]
+name = "oh-watch"
+version = "0.1.0"
+edition = "2024"
+authors =["hidu"]
+description= """oh-watch is a Git-based file change watcher and auto-reload tool.
+It periodically checks for file changes using Git status and
+automatically restarts a specified command when changes are detected.
+
+Site: https://github.com/oh-rust/oh-watch
+"""
+
+[dependencies]
+clap ={ version="4.6.0",features = ["derive"]}
+colored = "3.1.1"
+command-group = "5.0.1"
+ctrlc = "3.5.2"
+
+
+[profile.release]
+lto = true          # Link Time Optimization
+codegen-units = 1   # 减少生成单元，提高优化空间
+opt-level = "z"     # "z" 优化体积，"s" 优化大小，默认 "3" 优化速度
