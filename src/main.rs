@@ -34,7 +34,15 @@ fn main() {
     let exts: Option<Vec<String>> = if args.ext.is_empty() {
         None
     } else {
-        Some(args.ext.split(',').map(|s| s.to_string()).collect())
+        Some(
+            args.ext
+                .split(',')
+                .map(|s| {
+                    let ext = s.trim_start_matches('.');
+                    return format!(".{}", ext);
+                })
+                .collect(),
+        )
     };
 
     let interval = args.interval;
