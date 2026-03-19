@@ -25,7 +25,10 @@ oh-watch 是一个基于 Git 状态变化的自动重启工具，通过定时轮
    - 适用于不支持文件系统监听的环境（如 WSL、网络磁盘）
 
 ## 安装
-
+```bash
+cargo install oh-watch
+```
+或者
 ```bash
 cargo install --git https://github.com/oh-rust/oh-watch --branch master
 ```
