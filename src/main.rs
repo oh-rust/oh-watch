@@ -171,8 +171,21 @@ fn filter_git_m_not_staged(output: &str) -> Vec<String> {
             let first = status.chars().next()?;
             let second = status.chars().nth(1)?;
 
-            if matches!(first, ' ' | '?' | 'A') && matches!(second, 'M' | 'A' | '?') {
-                Some(line.to_string())
+            if matches!(first, ' ' | '?' | 'A') {
+                if matches!(second, 'M' | 'A' | '?') {
+                    Some(line.to_string())
+                } else {
+                    None
+                }
+            } else if matches!(first, 'R') {
+                // R -> rename
+                // R  old_name.html -> new_name.html
+                if let Some(pos) = line.split("->").nth(1) {
+                    let result = format!("R{} {}", " ", pos.trim());
+                    Some(result)
+                } else {
+                    None
+                }
             } else {
                 None
             }
