@@ -157,6 +157,30 @@ fn git_unstaged_files() -> Result<Vec<String>, io::Error> {
     Ok(files)
 }
 
+//
+//  git status -su
+//   XY 文件路径
+//   MM file.html   ->  已修改（modified），且已 git add,而且工作区有修改（未 add）
+//
+// 第一列（X）的含义: 暂存区（index）状态
+//   标志	含义
+//      （空格）	暂存区无变化
+//     M	已修改（modified），且已 git add
+//     A	已新增（added），已加入暂存区
+//     D	已删除（deleted），已暂存
+//     R	重命名（renamed）
+//     C	复制（copied）
+//     U	冲突（unmerged）
+//
+//  第二列（Y）的含义:工作区（working tree）状态
+//     标志	含义
+//     （空格）	工作区无变化
+//     M	工作区有修改（未 add）
+//     D	工作区已删除
+//     ?	未跟踪文件（配合 -u）
+//     U	冲突
+//
+//  ?? 是一个整体，表示“未跟踪文件（untracked）”,既不在暂存区，也不在版本库中 —— 完全是 Git 不认识的新文件
 fn filter_git_m_not_staged(output: &str) -> Vec<String> {
     output
         .lines()
@@ -171,7 +195,7 @@ fn filter_git_m_not_staged(output: &str) -> Vec<String> {
             let first = status.chars().next()?;
             let second = status.chars().nth(1)?;
 
-            if matches!(first, ' ' | '?' | 'A') {
+            if matches!(first, ' ' | '?' | 'A' | 'M') {
                 if matches!(second, 'M' | 'A' | '?') {
                     Some(line.to_string())
                 } else {
