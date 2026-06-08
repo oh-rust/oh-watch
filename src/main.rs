@@ -128,9 +128,49 @@ fn main() {
     }
 }
 
+#[cfg(unix)]
+fn graceful_stop(c: &GroupChild) -> std::io::Result<()> {
+    use nix::{
+        sys::signal::{Signal, killpg},
+        unistd::Pid,
+    };
+
+    killpg(Pid::from_raw(c.id() as i32), Signal::SIGINT).map_err(std::io::Error::other)
+}
+
 fn kill_process(mut c: GroupChild) {
     let msg = format!("[oh-watch] Stopping previous process (pid={:?}) ...", c.id());
     println!("{}", msg.red());
+
+    // Unix 下先尝试优雅退出
+    #[cfg(unix)]
+    {
+        use std::{thread, time::Instant};
+        let _ = graceful_stop(&c);
+        let deadline = Instant::now() + Duration::from_secs(3);
+
+        loop {
+            match c.try_wait() {
+                Ok(Some(status)) => {
+                    println!("[oh-watch] process exited gracefully: {}", status);
+                    return;
+                }
+                Ok(None) => {}
+                Err(e) => {
+                    eprintln!("[oh-watch] process wait failed: {}", e);
+                    return;
+                }
+            }
+
+            if Instant::now() >= deadline {
+                break;
+            }
+
+            thread::sleep(Duration::from_millis(100));
+        }
+
+        println!("[oh-watch] graceful shutdown timeout, force killing...");
+    }
 
     if let Err(e) = c.kill() {
         eprintln!("[oh-watch] failed to kill process (pid={}), err: {}", c.id(), e);
