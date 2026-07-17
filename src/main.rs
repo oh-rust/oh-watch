@@ -1,11 +1,14 @@
+mod git;
+mod process;
+
 use clap::Parser;
 use colored::*;
-use command_group::{CommandGroup, GroupChild};
+use command_group::CommandGroup;
 use std::sync::{
     Arc,
     atomic::{AtomicBool, Ordering},
 };
-use std::{collections::HashMap, io, process::Command, thread, time::Duration, time::SystemTime};
+use std::{collections::HashMap, thread, time::Duration, time::SystemTime};
 
 #[derive(Parser, Debug)]
 #[command(author, version, about)]
@@ -77,7 +80,7 @@ fn main() {
             }
         }
 
-        let unstaged_files = match git_unstaged_files() {
+        let unstaged_files = match git::unstaged_files() {
             Ok(o) => o,
             Err(e) => {
                 eprintln!("[oh-watch] git error: {}", e);
@@ -86,9 +89,9 @@ fn main() {
             }
         };
 
-        let current_state = parse_git_status(&unstaged_files, &exts);
+        let current_state = git::parse_status(&unstaged_files, &exts);
 
-        if !child.is_none() && !has_changed(&last_state, &current_state) {
+        if !child.is_none() && !git::has_changed(&last_state, &current_state) {
             sleep(interval);
             continue;
         }
@@ -97,17 +100,19 @@ fn main() {
 
         // kill 旧进程
         if let Some(c) = child.take() {
-            kill_process(c);
+            process::kill(c);
             child = None;
         }
 
         let msg = format!("[oh-watch] Starting: {:?}", cmd);
         println!("{}", msg.green());
 
-        let mut command = Command::new(&cmd[0]);
-        if cmd.len() > 1 {
-            command.args(&cmd[1..]);
-        }
+        // let mut command = Command::new(&cmd[0]);// 这里换成 xshell
+        // if cmd.len() > 1 {
+        //     command.args(&cmd[1..]);
+        // }
+        let mut command = process::shell_spawn(cmd.join(" ").as_str());
+        println!("Command: {:?}", command);
 
         match command.group_spawn() {
             Ok(c) => {
@@ -124,211 +129,8 @@ fn main() {
 
     println!("[oh-watch] Exiting...");
     if let Some(c) = child.take() {
-        kill_process(c);
+        process::kill(c);
     }
-}
-
-#[cfg(unix)]
-fn graceful_stop(c: &GroupChild) -> std::io::Result<()> {
-    use nix::{
-        sys::signal::{Signal, killpg},
-        unistd::Pid,
-    };
-
-    killpg(Pid::from_raw(c.id() as i32), Signal::SIGINT).map_err(std::io::Error::other)
-}
-
-fn kill_process(mut c: GroupChild) {
-    let msg = format!("[oh-watch] Stopping previous process (pid={:?}) ...", c.id());
-    println!("{}", msg.red());
-
-    // Unix 下先尝试优雅退出
-    #[cfg(unix)]
-    {
-        use std::{thread, time::Instant};
-        let _ = graceful_stop(&c);
-        let deadline = Instant::now() + Duration::from_secs(3);
-
-        loop {
-            match c.try_wait() {
-                Ok(Some(status)) => {
-                    println!("[oh-watch] process exited gracefully: {}", status);
-                    return;
-                }
-                Ok(None) => {}
-                Err(e) => {
-                    eprintln!("[oh-watch] process wait failed: {}", e);
-                    return;
-                }
-            }
-
-            if Instant::now() >= deadline {
-                break;
-            }
-
-            thread::sleep(Duration::from_millis(100));
-        }
-
-        println!("[oh-watch] graceful shutdown timeout, force killing...");
-    }
-
-    if let Err(e) = c.kill() {
-        eprintln!("[oh-watch] failed to kill process (pid={}), err: {}", c.id(), e);
-    } else {
-        println!("[oh-watch] process killed (pid={})", c.id());
-    }
-
-    match c.wait() {
-        Ok(status) => {
-            println!("[oh-watch] process wait exited: {}", status);
-        }
-        Err(e) => {
-            eprintln!("[oh-watch] process wait failed: {}", e);
-        }
-    }
-}
-
-fn git_unstaged_files() -> Result<Vec<String>, io::Error> {
-    let output = Command::new("git").args(["status", "-su"]).output()?;
-
-    let stdout = String::from_utf8_lossy(&output.stdout);
-    let files = filter_git_m_not_staged(&stdout);
-
-    Ok(files)
-}
-
-//
-//  git status -su
-//   XY 文件路径
-//   MM file.html   ->  已修改（modified），且已 git add,而且工作区有修改（未 add）
-//
-// 第一列（X）的含义: 暂存区（index）状态
-//   标志	含义
-//      （空格）	暂存区无变化
-//     M	已修改（modified），且已 git add
-//     A	已新增（added），已加入暂存区
-//     D	已删除（deleted），已暂存
-//     R	重命名（renamed）
-//     C	复制（copied）
-//     U	冲突（unmerged）
-//
-//  第二列（Y）的含义:工作区（working tree）状态
-//     标志	含义
-//     （空格）	工作区无变化
-//     M	工作区有修改（未 add）
-//     D	工作区已删除
-//     ?	未跟踪文件（配合 -u）
-//     U	冲突
-//
-//  ?? 是一个整体，表示“未跟踪文件（untracked）”,既不在暂存区，也不在版本库中 —— 完全是 Git 不认识的新文件
-fn filter_git_m_not_staged(output: &str) -> Vec<String> {
-    output
-        .lines()
-        .filter_map(|line| {
-            if line.len() < 4 {
-                return None;
-            }
-
-            let status = &line[0..2];
-            // let path = line[3..].trim().to_string();
-
-            let first = status.chars().next()?;
-            let second = status.chars().nth(1)?;
-
-            if matches!(first, ' ' | '?' | 'A' | 'M') {
-                if matches!(second, 'M' | 'A' | '?') {
-                    Some(line.to_string())
-                } else {
-                    None
-                }
-            } else if matches!(first, 'R') {
-                // R -> rename
-                // R  old_name.html -> new_name.html
-                if let Some(pos) = line.split("->").nth(1) {
-                    let result = format!("R{} {}", " ", pos.trim());
-                    Some(result)
-                } else {
-                    None
-                }
-            } else {
-                None
-            }
-        })
-        .collect()
-}
-
-fn parse_git_status(output: &Vec<String>, exts: &Option<Vec<String>>) -> HashMap<String, FileState> {
-    let mut map = HashMap::new();
-
-    for line in output {
-        // porcelain 格式：XY path
-        if line.len() < 3 {
-            continue;
-        }
-
-        let path = line[3..].trim().to_string();
-
-        // 后缀过滤
-        if let Some(exts) = exts {
-            let matched = exts.iter().any(|ext| path.ends_with(ext));
-            if !matched {
-                continue;
-            }
-        }
-
-        let metadata = match std::fs::metadata(&path) {
-            Ok(m) => m,
-            Err(e) => {
-                eprintln!("[oh-watch] Failed to get metadata for file: {}，err: {:?}", path, e);
-                if e.kind() == std::io::ErrorKind::NotFound {
-                    map.insert(
-                        path,
-                        FileState {
-                            mtime: SystemTime::UNIX_EPOCH,
-                        },
-                    );
-                }
-                continue;
-            }
-        };
-
-        let mtime = match metadata.modified() {
-            Ok(t) => t,
-            Err(e) => {
-                eprintln!("[oh-watch] Failed to get modified for file: {}, err: {:?}", path, e);
-                continue;
-            }
-        };
-
-        map.insert(path, FileState { mtime });
-    }
-
-    map
-}
-
-fn has_changed(old: &HashMap<String, FileState>, new: &HashMap<String, FileState>) -> bool {
-    if old.len() != new.len() {
-        return true;
-    }
-
-    for (path, new_fs) in new {
-        match old.get(path) {
-            Some(old_fs) => {
-                if new_fs.mtime != old_fs.mtime {
-                    let msg = format!("[oh-watch] file {} changed", path);
-                    println!("{}", msg.bright_blue());
-                    return true;
-                }
-            }
-            None => {
-                let msg = format!("[oh-watch] file {} added", path);
-                println!("{}", msg.bright_blue());
-                return true;
-            }
-        }
-    }
-
-    false
 }
 
 fn sleep(ms: u64) {
