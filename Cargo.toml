@@ -1,6 +1,6 @@
 [package]
 name = "oh-watch"
-version = "0.1.2"
+version = "0.1.3"
 edition = "2024"
 authors =["hidu"]
 description= """oh-watch is a Git-based file change watcher and auto-reload tool.
@@ -21,6 +21,7 @@ clap ={ version="4.6.0",features = ["derive"]}
 colored = "3.1.1"
 command-group = "5.0.1"
 ctrlc = "3.5.2"
+env = "1.0.1"
 nix = "0.31.3"
 
 

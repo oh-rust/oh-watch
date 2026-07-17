@@ -64,7 +64,7 @@ pub fn kill(mut c: GroupChild) {
     // Unix 下先尝试优雅退出
     #[cfg(unix)]
     {
-        use std::{thread, time::Instant};
+        use std::{thread, time::Duration, time::Instant};
         let _ = graceful_stop(&c);
         let deadline = Instant::now() + Duration::from_secs(3);
 
