@@ -5,6 +5,14 @@ use std::io;
 use std::process::Command;
 use std::time::SystemTime;
 
+
+
+#[derive(Clone, Debug)]
+struct FileState {
+    mtime: SystemTime,
+}
+
+
 pub fn unstaged_files() -> Result<Vec<String>, io::Error> {
     let output = Command::new("git").args(["status", "-su"]).output()?;
 

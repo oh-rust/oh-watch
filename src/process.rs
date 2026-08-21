@@ -1,6 +1,7 @@
 use colored::Colorize;
 use command_group::GroupChild;
 use std::process::Command;
+use crate::{log,elog};
 
 pub fn shell_spawn(command: &str) -> Command {
     #[cfg(target_os = "windows")]
@@ -56,10 +57,10 @@ fn graceful_stop(c: &GroupChild) -> std::io::Result<()> {
 
 pub fn kill(mut c: GroupChild) {
     let msg = format!(
-        "[oh-watch] Stopping previous process (pid={:?}) ...",
+        "Stopping previous process (pid={:?}) ...",
         c.id()
     );
-    println!("{}", msg.red());
+    log!("{}", msg.red());
 
     // Unix 下先尝试优雅退出
     #[cfg(unix)]
@@ -71,12 +72,12 @@ pub fn kill(mut c: GroupChild) {
         loop {
             match c.try_wait() {
                 Ok(Some(status)) => {
-                    println!("[oh-watch] process exited gracefully: {}", status);
+                    log!("process exited gracefully: {}", status);
                     return;
                 }
                 Ok(None) => {}
                 Err(e) => {
-                    eprintln!("[oh-watch] process wait failed: {}", e);
+                    elog!("process wait failed: {}", e);
                     return;
                 }
             }
@@ -88,25 +89,21 @@ pub fn kill(mut c: GroupChild) {
             thread::sleep(Duration::from_millis(100));
         }
 
-        println!("[oh-watch] graceful shutdown timeout, force killing...");
+        log!("graceful shutdown timeout, force killing...");
     }
 
     if let Err(e) = c.kill() {
-        eprintln!(
-            "[oh-watch] failed to kill process (pid={}), err: {}",
-            c.id(),
-            e
-        );
+        elog!( "failed to kill process (pid={}), err: {}",c.id(),e );
     } else {
-        println!("[oh-watch] process killed (pid={})", c.id());
+        log!("process killed (pid={})", c.id());
     }
 
     match c.wait() {
         Ok(status) => {
-            println!("[oh-watch] process wait exited: {}", status);
+            log!("process wait exited: {}", status);
         }
         Err(e) => {
-            eprintln!("[oh-watch] process wait failed: {}", e);
+            elog!("process wait failed: {}", e);
         }
     }
 }
