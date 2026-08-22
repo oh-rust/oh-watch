@@ -1,6 +1,7 @@
-mod process;
 mod helper;
+mod process;
 
+use crate::helper::{is_go_project, is_rust_project};
 use clap::Parser;
 use colored::*;
 use command_group::CommandGroup;
@@ -13,7 +14,6 @@ use std::sync::{
     atomic::{AtomicBool, Ordering},
 };
 use std::{path::Path, thread, time, time::Duration};
-use crate::helper::{is_go_project, is_rust_project};
 
 #[derive(Parser, Debug)]
 #[command(author, version, about)]
@@ -40,30 +40,35 @@ struct Args {
     cmd: Vec<String>,
 }
 
-fn default_ignore()->String{
+fn default_ignore() -> String {
     let mut ignore = String::from("**/.*,**/.*/**,**/*.log,**~");
-    if is_rust_project(){
+    if is_rust_project() {
         ignore.push_str(",**/target/**,**/Cargo.lock,**/Cargo.toml");
     }
-    let root = std::env::current_dir().unwrap().to_str().unwrap().to_string().replace("\\", "/");
-    for i in helper::read_gitignore(){
-        let mut str=String::new();
+    let root = std::env::current_dir()
+        .unwrap()
+        .to_str()
+        .unwrap()
+        .to_string()
+        .replace("\\", "/");
+    for i in helper::read_gitignore() {
+        let mut str = String::new();
         str.push_str(root.as_str());
         str.push_str("/");
-        if !i.contains("*"){
+        if !i.contains("*") {
             str.push_str(i.as_str());
-            let p=Path::new(i.as_str().trim_start_matches("/"));
-            if p.is_dir(){
+            let p = Path::new(i.as_str().trim_start_matches("/"));
+            if p.is_dir() {
                 str.push_str("/**");
             }
-        }else{
-            if !i.starts_with("**/"){
+        } else {
+            if !i.starts_with("**/") {
                 str.push_str("**/");
             }
             str.push_str(i.as_str());
         }
-        str=str.replace("//","/");
-        if str.ends_with("/"){
+        str = str.replace("//", "/");
+        if str.ends_with("/") {
             str.push_str("**")
         }
         ignore.push_str(",");
@@ -72,9 +77,12 @@ fn default_ignore()->String{
     ignore
 }
 
-fn default_dir()->String{
+fn default_dir() -> String {
     if is_go_project() {
-        return helper::go_deps_dirs().join(",")
+        return helper::go_deps_dirs().join(",");
+    }
+    if is_rust_project() {
+        return String::from("src");
     }
     String::from(".")
 }
@@ -129,23 +137,22 @@ impl Args {
         }
     }
 
-
-    fn is_ignore_match(&self,path:PathBuf)->bool{
+    fn is_ignore_match(&self, path: PathBuf) -> bool {
         if let Some(ignore_glob_set) = &self.ignore_glob_set {
             let p = path.to_string_lossy().replace('\\', "/");
-            let ret=ignore_glob_set.is_match(Path::new(&p));
+            let ret = ignore_glob_set.is_match(Path::new(&p));
             // log!("is_ignore_match：{}, match={}",p,ret);
             return ret;
         }
         false
     }
 
-    fn is_ext_match(&self,path:PathBuf)->bool{
-        if self.ext_set.is_empty(){
-            return true
+    fn is_ext_match(&self, path: PathBuf) -> bool {
+        if self.ext_set.is_empty() {
+            return true;
         }
         if let Some(ext) = path.extension().and_then(|s| s.to_str()) {
-            return self.ext_set.contains(ext)
+            return self.ext_set.contains(ext);
         }
         true
     }
@@ -153,12 +160,12 @@ impl Args {
     fn is_match(&self, paths: Vec<PathBuf>) -> bool {
         for path in paths {
             if self.is_ignore_match(path.clone()) {
-                continue
+                continue;
             }
-            if self.is_ext_match(path.clone()){
-                return true
+            if self.is_ext_match(path.clone()) {
+                helper::set_last_file(path.file_name().unwrap().to_str().unwrap_or(""));
+                return true;
             }
-
         }
         false
     }
@@ -167,41 +174,46 @@ impl Args {
         use notify::EventKind;
         match event.kind {
             EventKind::Create(_kind) => {
-                if self.is_match(event.paths.clone()) {
-                    let msg=format!("(matched) created, paths: {:?}",event.paths);
-                    log!("{}",msg.green());
+                let paths = helper::filter_dir(event.paths.clone());
+                if self.is_match(paths.clone()) {
+                    let msg = format!("(matched) created, paths: {:?}", paths);
+                    log!("{}", msg.green());
                     changed.store(true, Ordering::SeqCst);
-                }else{
-                    let msg=format!("(ignore) created, paths: {:?}",  event.paths);
-                    log!("{}",msg.bright_black());
+                } else {
+                    let msg = format!("(ignore) created, paths: {:?}", event.paths);
+                    log!("{}", msg.bright_black());
                 }
             }
 
             EventKind::Modify(_kind) => {
-                if self.is_match(event.paths.clone()) {
-                    let msg=format!("(matched) modified, paths: {:?}", event.paths);
-                    log!("{}",msg.green());
+                let paths = helper::filter_dir(event.paths.clone());
+                if self.is_match(paths.clone()) {
+                    let msg = format!("(matched) modified, paths: {:?}", paths);
+                    log!("{}", msg.green());
                     changed.store(true, Ordering::SeqCst);
-                }else{
-                    let msg=format!("(ignore) modified, paths: {:?}",  event.paths);
-                    log!("{}",msg.bright_black());
+                } else {
+                    let msg = format!("(ignore) modified, paths: {:?}", event.paths);
+                    log!("{}", msg.bright_black());
                 }
             }
 
             EventKind::Remove(_kind) => {
                 if self.is_match(event.paths.clone()) {
-                    let msg=format!("(matched) removed, paths: {:?}", event.paths);
-                    log!("{}",msg.green());
+                    let msg = format!("(matched) removed, paths: {:?}", event.paths);
+                    log!("{}", msg.green());
                     changed.store(true, Ordering::SeqCst);
-                }else{
-                    let msg=format!("(ignore) removed, paths: {:?}", event.paths);
-                    log!("{}",msg.bright_black());
+                } else {
+                    let msg = format!("(ignore) removed, paths: {:?}", event.paths);
+                    log!("{}", msg.bright_black());
                 }
             }
 
             _ => {
-                let msg=format!("(ignore) notify-event: {:?}, paths: {:?}", event.kind, event.paths);
-                log!("{}",msg.bright_black());
+                let msg = format!(
+                    "(ignore) notify-event: {:?}, paths: {:?}",
+                    event.kind, event.paths
+                );
+                log!("{}", msg.bright_black());
             }
         }
     }
@@ -283,19 +295,20 @@ async fn main() {
             continue;
         }
 
-        if let Some(le)=last_exit && le.elapsed().as_secs_f64()<1.0{
-            elog!("duration={:?}, Sleep 1000 ...",le.elapsed());
+        if let Some(le) = last_exit
+            && le.elapsed().as_secs_f64() < 1.0
+        {
+            elog!("duration={:?}, Sleep 1000 ...", le.elapsed());
             sleep(1000);
         }
 
-        last_exit=Some(time::Instant::now());
+        last_exit = Some(time::Instant::now());
 
         helper::next_id_incr();
 
         log!("{}", "Detected changes.".red());
 
-
-        let start=time::Instant::now();
+        let start = time::Instant::now();
 
         // kill 旧进程
         if let Some(c) = child.take() {
@@ -314,7 +327,10 @@ async fn main() {
                 let elapsed = start.elapsed();
                 let pid = c.id();
                 child = Some(c);
-                let msg = format!("Process started: {:?}, pid={}, cost={:?}", cmd, pid,elapsed);
+                let msg = format!(
+                    "Process started: {:?}, pid={}, cost={:?}",
+                    cmd, pid, elapsed
+                );
                 log!("{}", msg.green());
 
                 changed.store(false, Ordering::SeqCst);

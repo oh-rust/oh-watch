@@ -1,7 +1,7 @@
+use crate::{elog, log};
 use colored::Colorize;
 use command_group::GroupChild;
 use std::process::Command;
-use crate::{log,elog};
 
 pub fn shell_spawn(command: &str) -> Command {
     #[cfg(target_os = "windows")]
@@ -56,10 +56,7 @@ fn graceful_stop(c: &GroupChild) -> std::io::Result<()> {
 }
 
 pub fn kill(mut c: GroupChild) {
-    let msg = format!(
-        "Stopping previous process (pid={:?}) ...",
-        c.id()
-    );
+    let msg = format!("Stopping previous process (pid={:?}) ...", c.id());
     log!("{}", msg.red());
 
     // Unix 下先尝试优雅退出
@@ -93,7 +90,7 @@ pub fn kill(mut c: GroupChild) {
     }
 
     if let Err(e) = c.kill() {
-        elog!( "failed to kill process (pid={}), err: {}",c.id(),e );
+        elog!("failed to kill process (pid={}), err: {}", c.id(), e);
     } else {
         log!("process killed (pid={})", c.id());
     }
