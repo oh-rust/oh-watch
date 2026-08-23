@@ -3,7 +3,7 @@ use colored::Colorize;
 use command_group::GroupChild;
 use std::process::Command;
 
-pub fn shell_spawn(command: &str) -> Command {
+pub fn shell_command(command: &str) -> Command {
     #[cfg(target_os = "windows")]
     {
         if let Some(bash) = git_bash() {
@@ -38,11 +38,7 @@ fn git_bash() -> Option<String> {
 
     let path = env::var("GIT_BASH").ok()?;
     let path = path.trim_matches('"').to_string();
-    if Path::new(&path).exists() {
-        Some(path)
-    } else {
-        None
-    }
+    if Path::new(&path).exists() { Some(path) } else { None }
 }
 
 #[cfg(unix)]

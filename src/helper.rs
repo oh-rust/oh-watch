@@ -21,14 +21,7 @@ pub fn set_last_file(file: impl Into<String>) {
     let file = if file.chars().count() > 16 {
         let start: String = file.chars().take(12).collect();
 
-        let end: String = file
-            .chars()
-            .rev()
-            .take(3)
-            .collect::<String>()
-            .chars()
-            .rev()
-            .collect();
+        let end: String = file.chars().rev().take(3).collect::<String>().chars().rev().collect();
 
         format!("{start}*{end}")
     } else {
@@ -40,17 +33,8 @@ pub fn set_last_file(file: impl Into<String>) {
 
 pub fn log_prefix() -> String {
     let tm = format!("[{}]", chrono::Local::now().format("%H:%M:%S"));
-    let num_file = format!(
-        "[{}-{}]",
-        NEXT_ID.load(std::sync::atomic::Ordering::SeqCst),
-        get_last_file()
-    );
-    format!(
-        "{} {} {}",
-        "[oh-watch]".cyan(),
-        tm.bright_black(),
-        num_file.yellow()
-    )
+    let num_file = format!("[{}-{}]", NEXT_ID.load(std::sync::atomic::Ordering::SeqCst), get_last_file());
+    format!("{} {} {}", "[oh-watch]".cyan(), tm.bright_black(), num_file.yellow())
 }
 
 #[macro_export]
