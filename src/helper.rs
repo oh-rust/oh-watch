@@ -3,6 +3,11 @@ use std::path::{Path, PathBuf};
 use std::process::Command;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::{LazyLock, Mutex};
+use std::{
+    fs,
+    io,
+    time::{Duration, SystemTime},
+};
 
 static NEXT_ID: AtomicUsize = AtomicUsize::new(0);
 pub fn next_id_incr() -> usize {
@@ -63,6 +68,10 @@ pub fn is_go_project() -> bool {
     Path::new("go.mod").is_file()
 }
 
+pub fn go_tmp_dir() -> std::path::PathBuf {
+    std::env::temp_dir().join("go-oh-watch")
+}
+
 pub fn is_rust_project() -> bool {
     Path::new("Cargo.toml").is_file()
 }
@@ -106,4 +115,41 @@ pub fn read_gitignore() -> Vec<String> {
 
 pub fn filter_dir(paths: Vec<PathBuf>) -> Vec<PathBuf> {
     paths.into_iter().filter(|path| path.is_file()).collect()
+}
+
+
+pub fn clean_go_tmp_dir() -> io::Result<()> {
+    let dir = go_tmp_dir();
+    let now = SystemTime::now();
+    let expire = Duration::from_secs(5 * 60);
+
+    for entry in fs::read_dir(&dir)? {
+        let entry = match entry {
+            Ok(entry) => entry,
+            Err(_) => continue,
+        };
+
+        let path = entry.path();
+
+        if !path.is_dir() {
+            continue;
+        }
+
+        let metadata = match entry.metadata() {
+            Ok(metadata) => metadata,
+            Err(_) => continue,
+        };
+
+        let created = match metadata.created() {
+            Ok(created) => created,
+            Err(_) => continue,
+        };
+
+        if now.duration_since(created).unwrap_or_default() >= expire {
+            elog!("try clean go-temp-dir {}", path.display());
+            let _ = fs::remove_dir_all(&path);
+        }
+    }
+
+    Ok(())
 }

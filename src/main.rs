@@ -66,6 +66,10 @@ async fn main() {
     {
         let r = running.clone();
         ctrlc::set_handler(move || {
+            if process::IS_SENDING_SIGNAL.load(Ordering::SeqCst) {
+                log!("Ignored signal caused by sending CTRL_BREAK to child");
+                return;
+            }
             log!("receive Ctrl+C");
             r.store(false, Ordering::SeqCst);
         })
@@ -122,6 +126,10 @@ async fn main() {
         if let Some(c) = child.take() {
             process::kill(c);
             child = None;
+        }
+
+        if helper::is_go_project(){
+            let _=helper::clean_go_tmp_dir();
         }
 
         let mut command = args.run_cmd();
