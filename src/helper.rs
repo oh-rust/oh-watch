@@ -4,8 +4,7 @@ use std::process::Command;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::{LazyLock, Mutex};
 use std::{
-    fs,
-    io,
+    fs, io,
     time::{Duration, SystemTime},
 };
 
@@ -116,7 +115,6 @@ pub fn read_gitignore() -> Vec<String> {
 pub fn filter_dir(paths: Vec<PathBuf>) -> Vec<PathBuf> {
     paths.into_iter().filter(|path| path.is_file()).collect()
 }
-
 
 pub fn clean_go_tmp_dir() -> io::Result<()> {
     let dir = go_tmp_dir();

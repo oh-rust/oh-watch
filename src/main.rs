@@ -128,8 +128,8 @@ async fn main() {
             child = None;
         }
 
-        if helper::is_go_project(){
-            let _=helper::clean_go_tmp_dir();
+        if helper::is_go_project() {
+            let _ = helper::clean_go_tmp_dir();
         }
 
         let mut command = args.run_cmd();

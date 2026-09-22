@@ -6,11 +6,11 @@ use command_group::CommandGroup;
 use globset::{Glob, GlobSet, GlobSetBuilder};
 use std::collections::HashMap;
 use std::collections::HashSet;
+use std::fs;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::time;
-use std::fs;
 
 #[derive(Parser, Debug, Clone)]
 #[command(author, version, about)]
@@ -36,7 +36,7 @@ pub struct Args {
     pull_state: HashMap<String, time::SystemTime>,
 
     /// Polling interval for checking file changes, in milliseconds
-    #[arg(short='I', long, default_value_t = 200)]
+    #[arg(short = 'I', long, default_value_t = 200)]
     interval: u64,
 
     /// Additional files to monitor using polling
@@ -61,7 +61,7 @@ fn default_ignore() -> String {
     if is_rust_project() {
         ignore.push_str(",**/target/**,**/Cargo.lock,**/Cargo.toml");
     }
-    if is_go_project(){
+    if is_go_project() {
         ignore.push_str(",**/*_test.go");
     }
     let root = std::env::current_dir().unwrap().to_str().unwrap().to_string().replace("\\", "/");
@@ -269,14 +269,12 @@ impl Args {
     }
 
     pub fn run_cmd(&self) -> std::process::Command {
-        let mut cmd=process::shell_command(self.cmd.clone().join(" ").as_str());
-        if is_go_project(){
-            let dir=helper::go_tmp_dir();
-           cmd.env("GOTMPDIR", &dir);
-           let _= fs::create_dir_all(&dir);
+        let mut cmd = process::shell_command(self.cmd.clone().join(" ").as_str());
+        if is_go_project() {
+            let dir = helper::go_tmp_dir();
+            cmd.env("GOTMPDIR", &dir);
+            let _ = fs::create_dir_all(&dir);
         }
         cmd
     }
 }
-
-

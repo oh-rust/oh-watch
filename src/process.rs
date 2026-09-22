@@ -2,33 +2,44 @@ use crate::{elog, log};
 use colored::Colorize;
 use command_group::GroupChild;
 use std::process::Command;
-use std::sync::{
-    atomic::{AtomicBool, Ordering},
-};
+use std::sync::atomic::{AtomicBool, Ordering};
 
 #[cfg(windows)]
 use std::os::windows::process::CommandExt;
+use windows::Win32::System::Console::{CTRL_BREAK_EVENT, GenerateConsoleCtrlEvent, SetConsoleCtrlHandler};
 use windows::core::BOOL;
-use windows::Win32::System::Console::{
-    GenerateConsoleCtrlEvent,
-    SetConsoleCtrlHandler,
-    CTRL_BREAK_EVENT,
-};
 
-
-
+#[cfg(windows)]
+fn command_exists(command: &str) -> bool {
+    std::process::Command::new("where.exe").arg(command).output().map(|output| output.status.success()).unwrap_or(false)
+}
 
 // Windows API 常量
 const CREATE_NEW_PROCESS_GROUP: u32 = 0x00000200;
 
-
 pub fn shell_command(command: &str) -> Command {
     #[cfg(target_os = "windows")]
     {
+        if let Some(shell) = env::var("MSYSTEM").ok() {
+            if shell.eq("MINGW64") {
+                let mut cmd = Command::new("sh");
+                cmd.creation_flags(CREATE_NEW_PROCESS_GROUP);
+                cmd.args(["-c", command]);
+                return cmd;
+            }
+        }
+
         if let Some(bash) = git_bash() {
             let mut cmd = Command::new(bash);
             cmd.creation_flags(CREATE_NEW_PROCESS_GROUP);
             cmd.args(["-c", command]);
+            return cmd;
+        }
+
+        if command_exists("powershell.exe") {
+            let mut cmd = Command::new("powershell.exe");
+            cmd.creation_flags(CREATE_NEW_PROCESS_GROUP);
+            cmd.arg("-NoProfile").arg("-Command").arg(command);
             return cmd;
         }
 
@@ -53,7 +64,7 @@ use std::path::Path;
 fn git_bash() -> Option<String> {
     if let Some(shell) = env::var("SHELL").ok() {
         let shell = shell.trim_matches('"').to_string();
-        if shell.ends_with("\\bash.exe") {
+        if shell.ends_with("\\bash.exe") || shell.ends_with("/bash") {
             return Some(shell);
         }
     }
@@ -73,13 +84,12 @@ fn graceful_stop(c: &GroupChild) -> std::io::Result<()> {
     killpg(Pid::from_raw(c.id() as i32), Signal::SIGINT).map_err(std::io::Error::other)
 }
 
-
 #[cfg(windows)]
-unsafe extern "system" fn ctrl_handler(ctrl_type: u32) ->BOOL {
+unsafe extern "system" fn ctrl_handler(ctrl_type: u32) -> BOOL {
     if ctrl_type == CTRL_BREAK_EVENT {
-        BOOL(1)// 返回 1 表示 TRUE (拦截事件)
+        BOOL(1) // 返回 1 表示 TRUE (拦截事件)
     } else {
-        BOOL(0)// 返回 0 表示 FALSE (不拦截，交给后续 handler)
+        BOOL(0) // 返回 0 表示 FALSE (不拦截，交给后续 handler)
     }
 }
 
@@ -93,19 +103,17 @@ fn graceful_stop(c: &GroupChild) -> std::io::Result<()> {
         IS_SENDING_SIGNAL.store(true, Ordering::SeqCst);
 
         // 1. 临时设置父进程忽略 CTRL_BREAK 信号
-        SetConsoleCtrlHandler(Some(ctrl_handler), true)
-            .map_err(|_| std::io::Error::last_os_error())?;
+        SetConsoleCtrlHandler(Some(ctrl_handler), true).map_err(|_| std::io::Error::last_os_error())?;
 
         // 2. 发送信号给子进程组
-        let send_res = GenerateConsoleCtrlEvent(CTRL_BREAK_EVENT, c.id())
-            .map_err(|_| std::io::Error::last_os_error());
+        let send_res = GenerateConsoleCtrlEvent(CTRL_BREAK_EVENT, c.id()).map_err(|_| std::io::Error::last_os_error());
 
         send_res.map_err(|_| std::io::Error::last_os_error())
     }
 }
 
 #[cfg(windows)]
-fn after_graceful_stop(){
+fn after_graceful_stop() {
     unsafe {
         // 5. 恢复标志位
         IS_SENDING_SIGNAL.store(false, Ordering::SeqCst);
@@ -137,11 +145,7 @@ pub fn kill(mut c: GroupChild) {
                     log!("sent graceful shutdown signal (pid={})", pid);
                 }
                 Err(e) => {
-                    elog!(
-                        "failed to send graceful shutdown signal (pid={}), err: {}",
-                        pid,
-                        e
-                    );
+                    elog!("failed to send graceful shutdown signal (pid={}), err: {}", pid, e);
                 }
             }
             let deadline = Instant::now() + Duration::from_secs(5);
@@ -175,7 +179,6 @@ pub fn kill(mut c: GroupChild) {
         }
         log!("graceful shutdown timeout, force killing...");
     }
-
 
     if let Err(e) = c.kill() {
         elog!("failed to kill process (pid={}), err: {}", pid, e);
