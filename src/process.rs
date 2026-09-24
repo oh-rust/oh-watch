@@ -2,12 +2,16 @@ use crate::{elog, log};
 use colored::Colorize;
 use command_group::GroupChild;
 use std::process::Command;
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::atomic::{AtomicBool};
+use {std::env, std::path::Path};
 
 #[cfg(windows)]
-use std::os::windows::process::CommandExt;
-use windows::Win32::System::Console::{CTRL_BREAK_EVENT, GenerateConsoleCtrlEvent, SetConsoleCtrlHandler};
-use windows::core::BOOL;
+use {
+    std::os::windows::process::CommandExt,
+    windows::Win32::System::Console::{CTRL_BREAK_EVENT, GenerateConsoleCtrlEvent, SetConsoleCtrlHandler},
+    windows::core::BOOL,
+    std::sync::atomic::{ Ordering},
+};
 
 #[cfg(windows)]
 fn command_exists(command: &str) -> bool {
@@ -56,10 +60,6 @@ pub fn shell_command(command: &str) -> Command {
         cmd
     }
 }
-
-#[cfg(target_os = "windows")]
-use std::env;
-use std::path::Path;
 
 fn git_bash() -> Option<String> {
     if let Some(shell) = env::var("SHELL").ok() {
