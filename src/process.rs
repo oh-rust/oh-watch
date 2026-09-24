@@ -2,15 +2,15 @@ use crate::{elog, log};
 use colored::Colorize;
 use command_group::GroupChild;
 use std::process::Command;
-use std::sync::atomic::{AtomicBool};
+use std::sync::atomic::AtomicBool;
 use {std::env, std::path::Path};
 
 #[cfg(windows)]
 use {
     std::os::windows::process::CommandExt,
+    std::sync::atomic::Ordering,
     windows::Win32::System::Console::{CTRL_BREAK_EVENT, GenerateConsoleCtrlEvent, SetConsoleCtrlHandler},
     windows::core::BOOL,
-    std::sync::atomic::{ Ordering},
 };
 
 #[cfg(windows)]

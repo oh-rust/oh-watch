@@ -126,7 +126,28 @@ impl Args {
             self.ignore_glob_set = Some(ignore.build().expect("invalid ignore rule"));
         }
 
-        log!("Watching git changes..., Command= {:?}", self.cmd.clone());
+        log!("Build: {:?}, Cmd: {:?}", self.get_build(), self.get_cmd());
+    }
+
+    fn get_build(&self) -> String {
+        if self.cmd.len() == 1 && self.cmd[0] == "run" {
+            if is_go_project() {
+                return "go build".to_string();
+            }
+        }
+        self.build.clone()
+    }
+
+    fn get_cmd(&self) -> Vec<String> {
+        if self.cmd.len() == 1 && self.cmd[0] == "run" {
+            if is_go_project() {
+                let dir = env::current_dir().unwrap();
+                let name = dir.file_name().and_then(|s| s.to_str()).unwrap_or("some-error");
+                let ec = format!("./{}", name);
+                return vec![ec];
+            }
+        }
+        self.cmd.clone()
     }
 
     pub fn get_pull_interval(&self) -> u64 {
@@ -245,10 +266,11 @@ impl Args {
     }
 
     pub fn try_build(&self) -> bool {
-        if self.build.is_empty() {
+        let build = self.get_build();
+        if build.is_empty() {
             return true;
         }
-        let mut c = process::shell_command(self.build.as_str());
+        let mut c = process::shell_command(build.as_str());
         log!("{}", format!("try build: {:?}", c).yellow());
         let start = time::Instant::now();
         match c.group_status() {
@@ -269,7 +291,7 @@ impl Args {
     }
 
     pub fn run_cmd(&self) -> std::process::Command {
-        let mut cmd = process::shell_command(self.cmd.clone().join(" ").as_str());
+        let mut cmd = process::shell_command(self.get_cmd().join(" ").as_str());
         if is_go_project() {
             let dir = helper::go_tmp_dir();
             cmd.env("GOTMPDIR", &dir);

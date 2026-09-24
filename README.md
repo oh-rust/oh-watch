@@ -36,14 +36,24 @@ Arguments:
   <CMD>...  Command to run (use -- before command)
 
 Options:
-  -e, --ext <EXT>        File extensions to watch (comma-separated),e.g. "js,css", empty = all [default: ""]
-  -d, --dir <DIR>        Dirs to watch (comma-separated) [default: .]
-  -i, --ignore <IGNORE>  [default: **/.*,**/.*/**,**/*.log,**~]
-  -h, --help             Print help
-  -V, --version          Print version
+  -e, --ext <EXT>            File extensions to watch (comma-separated),e.g. "js,css", empty = all [default: ""]
+  -d, --dir <DIR>            Dirs to watch (comma-separated) [default: .]
+  -i, --ignore <IGNORE>      [default: **/.*,**/.*/**,**/*.log,**~]
+  -I, --interval <INTERVAL>  Polling interval for checking file changes, in milliseconds [default: 200]
+  -f, --files <FILES>        Additional files to monitor using polling
+  -b, --build <BUILD>        Command to build, option [default: ""]
+  -h, --help                 Print help
+  -V, --version              Print version
 ```
 
 ### 2. 使用
 ```bash
 oh-watch -- go run main.go
+```
+
+对于 Go 项目，也可以：
+```bash
+oh-watch -- run
+# 相当于
+# oh-watch -b "go build" -- ./{app}
 ```
