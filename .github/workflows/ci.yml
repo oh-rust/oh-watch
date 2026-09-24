@@ -3,19 +3,197 @@ name: Build and Publish
 on:
   push:
     branches:
-      - master  # 监听 master 分支的推送事件
+      - master
 
 jobs:
-  build:
-    runs-on: ubuntu-latest  # 在最新版本的 Ubuntu 上运行 CI
+  # ============================================================
+  # Linux MUSL
+  # ============================================================
+  build-linux:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - target: x86_64-unknown-linux-musl
+            target_dir: x86_64-musl
+            output: oh-watch-x86_64-linux-musl
+
+          - target: aarch64-unknown-linux-musl
+            target_dir: aarch64-musl
+            output: oh-watch-aarch64-linux-musl
+
+    steps:
+      # ----------------------------------------------------------
+      # Checkout
+      # ----------------------------------------------------------
+      - name: Checkout code
+        uses: actions/checkout@v7
+
+      # ----------------------------------------------------------
+      # Cargo cache
+      # ----------------------------------------------------------
+      - name: Cache Cargo dependencies
+        uses: actions/cache@v6
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: ${{ runner.os }}-cargo-${{ matrix.target }}-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-cargo-${{ matrix.target }}-
+
+      # ----------------------------------------------------------
+      # Install cross
+      # ----------------------------------------------------------
+      - name: Install cross
+        run: cargo install cross --locked
+
+      # ----------------------------------------------------------
+      # Build
+      # ----------------------------------------------------------
+      - name: Build
+        run: |
+          cross build \
+            --release \
+            --target ${{ matrix.target }} \
+            --target-dir target/${{ matrix.target_dir }}
+
+      # ----------------------------------------------------------
+      # Prepare artifact
+      # ----------------------------------------------------------
+      - name: Prepare artifact
+        run: |
+          mkdir -p output
+
+          cp \
+            target/${{ matrix.target_dir }}/${{ matrix.target }}/release/oh-watch \
+            output/${{ matrix.output }}
+
+          chmod +x output/${{ matrix.output }}
+
+          ls -lh output/
+
+      # ----------------------------------------------------------
+      # Upload artifact
+      # ----------------------------------------------------------
+      - name: Upload artifact
+        uses: actions/upload-artifact@v7
+        with:
+          name: ${{ matrix.output }}
+          path: output/${{ matrix.output }}
+
+
+  # ============================================================
+  # Windows
+  # ============================================================
+  build-windows:
+    runs-on: windows-latest
     permissions:
       contents: write
 
     steps:
-      # 检出代码
+      # ----------------------------------------------------------
+      # Checkout
+      # ----------------------------------------------------------
+      - name: Checkout code
+        uses: actions/checkout@v7
+
+      # ----------------------------------------------------------
+      # Cargo cache
+      # ----------------------------------------------------------
+      - name: Cache Cargo dependencies
+        uses: actions/cache@v6
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: ${{ runner.os }}-cargo-x86_64-pc-windows-msvc-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-cargo-x86_64-pc-windows-msvc-
+
+      # ----------------------------------------------------------
+      # Install target
+      # ----------------------------------------------------------
+      - name: Install Rust target
+        run: rustup target add x86_64-pc-windows-msvc
+
+      # ----------------------------------------------------------
+      # Build
+      # ----------------------------------------------------------
+      - name: Build
+        shell: pwsh
+        run: |
+          cargo build `
+            --release `
+            --target x86_64-pc-windows-msvc `
+            --target-dir target/windows
+
+      # ----------------------------------------------------------
+      # Prepare artifact
+      # ----------------------------------------------------------
+      - name: Prepare artifact
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force -Path output | Out-Null
+
+          Copy-Item `
+            target/windows/x86_64-pc-windows-msvc/release/oh-watch.exe `
+            output/oh-watch-x86_64-windows-msvc.exe
+
+          Get-ChildItem output
+
+      # ----------------------------------------------------------
+      # Upload artifact
+      # ----------------------------------------------------------
+      - name: Upload artifact
+        uses: actions/upload-artifact@v7
+        with:
+          name: oh-watch-x86_64-windows-msvc
+          path: output/oh-watch-x86_64-windows-msvc.exe
+
+
+  # ============================================================
+  # macOS
+  # ============================================================
+  build-macos:
+    runs-on: ${{ matrix.os }}
+    permissions:
+      contents: write
+
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          # ------------------------------------------------------
+          # Intel Mac
+          # ------------------------------------------------------
+          - os: macos-15-intel
+            target: x86_64-apple-darwin
+            output: oh-watch-x86_64-macos
+
+          # ------------------------------------------------------
+          # Apple Silicon
+          # ------------------------------------------------------
+          - os: macos-14
+            target: aarch64-apple-darwin
+            output: oh-watch-aarch64-macos
+
+    steps:
+      # ----------------------------------------------------------
+      # Checkout
+      # ----------------------------------------------------------
       - name: Checkout code
         uses: actions/checkout@v6
 
+      # ----------------------------------------------------------
+      # Cargo cache
+      # ----------------------------------------------------------
       - name: Cache Cargo dependencies
         uses: actions/cache@v5
         with:
@@ -23,41 +201,98 @@ jobs:
             ~/.cargo/registry
             ~/.cargo/git
             target
-          key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
+          key: ${{ runner.os }}-${{ matrix.target }}-cargo-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-${{ matrix.target }}-cargo-
 
-      # 设置 cross (如果需要跨平台构建)
-      - name: Install cross
+      # ----------------------------------------------------------
+      # Install target
+      # ----------------------------------------------------------
+      - name: Install Rust target
+        run: rustup target add ${{ matrix.target }}
+
+      # ----------------------------------------------------------
+      # Build
+      # ----------------------------------------------------------
+      - name: Build
         run: |
-          cargo install cross
+          cargo build \
+            --release \
+            --target ${{ matrix.target }} \
+            --target-dir target/${{ matrix.target }}
 
-      - name: Build x86_64-musl
+      # ----------------------------------------------------------
+      # Prepare artifact
+      # ----------------------------------------------------------
+      - name: Prepare artifact
         run: |
-         cross build --release --target x86_64-unknown-linux-musl --target-dir target/x86_64-musl
-        
-         mkdir -p output || true
-         cp target/x86_64-musl/x86_64-unknown-linux-musl/release/oh-watch output/oh-watch-x86_64-linux-musl
-         ls output -l
-      
-      - name: Build aarch64-musl
+          mkdir -p output
+
+          cp \
+            target/${{ matrix.target }}/${{ matrix.target }}/release/oh-watch \
+            output/${{ matrix.output }}
+
+          chmod +x output/${{ matrix.output }}
+
+          ls -lh output/
+
+      # ----------------------------------------------------------
+      # Upload artifact
+      # ----------------------------------------------------------
+      - name: Upload artifact
+        uses: actions/upload-artifact@v7
+        with:
+          name: ${{ matrix.output }}
+          path: output/${{ matrix.output }}
+
+
+  # ============================================================
+  # Publish Nightly Release
+  # ============================================================
+  publish:
+    needs:
+      - build-linux
+      - build-windows
+      - build-macos
+
+    runs-on: ubuntu-latest
+
+    permissions:
+      contents: write
+
+    steps:
+      # ----------------------------------------------------------
+      # Download all artifacts
+      # ----------------------------------------------------------
+      - name: Download artifacts
+        uses: actions/download-artifact@v8
+        with:
+          path: output
+          merge-multiple: true
+
+      # ----------------------------------------------------------
+      # Check artifacts
+      # ----------------------------------------------------------
+      - name: List artifacts
         run: |
-         cross build --release --target aarch64-unknown-linux-musl --target-dir target/aarch64-musl
+          echo "Build artifacts:"
+          ls -lh output/
 
-         mkdir -p output || true
-         mv target/aarch64-musl/aarch64-unknown-linux-musl/release/oh-watch output/oh-watch-aarch64-linux-musl
-         ls output -l
-
-      # 发布 Nightly Release
+      # ----------------------------------------------------------
+      # Publish Nightly Release
+      # ----------------------------------------------------------
       - name: Publish Nightly Release
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          # 删除已有 nightly release（如果存在）
           gh release delete nightly -y || true
 
-          # 创建或覆盖 nightly release
           gh release create nightly \
             output/oh-watch-x86_64-linux-musl \
             output/oh-watch-aarch64-linux-musl \
+            output/oh-watch-x86_64-windows-msvc.exe \
+            output/oh-watch-x86_64-macos \
+            output/oh-watch-aarch64-macos \
             --title "Nightly Release" \
             --notes "Automatically built from master commit $GITHUB_SHA on $(date -u +'%Y-%m-%d %H:%M:%S UTC')" \
             --prerelease
