@@ -261,29 +261,20 @@ jobs:
       contents: write
 
     steps:
-      # ----------------------------------------------------------
-      # Download all artifacts
-      # ----------------------------------------------------------
       - name: Download artifacts
         uses: actions/download-artifact@v8
         with:
           path: output
           merge-multiple: true
 
-      # ----------------------------------------------------------
-      # Check artifacts
-      # ----------------------------------------------------------
       - name: List artifacts
         run: |
-          echo "Build artifacts:"
           ls -lh output/
 
-      # ----------------------------------------------------------
-      # Publish Nightly Release
-      # ----------------------------------------------------------
       - name: Publish Nightly Release
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_REPO: ${{ github.repository }}
         run: |
           gh release delete nightly -y || true
 
