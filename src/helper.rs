@@ -64,7 +64,30 @@ macro_rules! elog {
 }
 
 pub fn is_go_project() -> bool {
-    Path::new("go.mod").is_file()
+    let Ok(mut dir) = std::env::current_dir() else {
+        return false;
+    };
+
+    for _ in 0..10 {
+        if dir.join("go.mod").is_file() {
+            return true;
+        }
+        if dir.join("go.work").is_file() {
+            return false;
+        }
+
+        if dir.join("Cargo.toml").is_file() {
+            return false;
+        }
+
+        let Some(parent) = dir.parent() else {
+            break;
+        };
+
+        dir = parent.to_path_buf();
+    }
+
+    false
 }
 
 pub fn go_tmp_dir() -> std::path::PathBuf {
